@@ -1,0 +1,45 @@
+{
+  "name": "cluelydupe",
+  "version": "0.1.0",
+  "description": "Invisible always-on-top AI overlay. Hidden from screen share and screenshots via OS content protection.",
+  "main": "src/main.js",
+  "private": true,
+  "scripts": {
+    "start": "env -u ELECTRON_RUN_AS_NODE electron .",
+    "dev": "env -u ELECTRON_RUN_AS_NODE electron . --dev",
+    "dist": "electron-builder"
+  },
+  "build": {
+    "appId": "dev.kli.cluelydupe",
+    "productName": "CluelyDupe",
+    "files": [
+      "src/**",
+      "renderer/**",
+      "native/**",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "native/**"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Optional microphone access for voice input.",
+        "NSScreenCaptureDescription": "Needed to capture your screen so the assistant can read it."
+      }
+    }
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.126.0"
+  },
+  "devDependencies": {
+    "electron": "^44.4.1",
+    "electron-builder": "^26.0.0"
+  },
+  "bin": {
+    "cluely": "bin/cluely"
+  }
+}

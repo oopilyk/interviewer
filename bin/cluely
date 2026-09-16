@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+# Launch and control the CluelyDupe overlay from any terminal.
+#
+#   cluely            start it, or bring the window back if it is already running
+#   cluely stop       quit it
+#   cluely restart    quit, then start again (use after pulling code changes)
+#   cluely status     say whether it is running
+#   cluely logs       follow the log file
+set -euo pipefail
+
+# Resolve the project directory through the symlink in ~/.local/bin.
+src="${BASH_SOURCE[0]}"
+while [ -L "$src" ]; do
+  dir="$(cd -P "$(dirname "$src")" && pwd)"
+  src="$(readlink "$src")"
+  [[ "$src" != /* ]] && src="$dir/$src"
+done
+APP_DIR="$(cd -P "$(dirname "$src")/.." && pwd)"
+
+LOG_DIR="$HOME/Library/Logs/cluelydupe"
+LOG="$LOG_DIR/cluely.log"
+MAC_APP="$APP_DIR/node_modules/electron/dist/Electron.app"
+MAC_BIN="$MAC_APP/Contents/MacOS/Electron"
+# Matches only this project's Electron main process, never its helper processes
+# or any other Electron app on the machine.
+MATCH="^$MAC_BIN( |\$)"
+
+is_running() { pgrep -f "$MATCH" >/dev/null 2>&1; }
+
+start() {
+  if [ ! -d "$APP_DIR/node_modules/electron" ]; then
+    echo "Dependencies missing. Run: cd \"$APP_DIR\" && npm install" >&2
+    exit 1
+  fi
+  mkdir -p "$LOG_DIR"
+  if [ "$(uname)" = "Darwin" ]; then
+    # Launch through LaunchServices rather than as a child of this shell:
+    #  - it detaches, so closing the terminal does not kill the overlay
+    #  - Electron.app is its own "responsible process", so the Screen Recording
+    #    permission granted to Electron applies instead of being checked
+    #    against whichever terminal app ran the command
+    # `open` forwards the caller's environment, so strip ELECTRON_RUN_AS_NODE
+    # (VS Code sets it in its terminals); left in, Electron boots as plain Node
+    # and exits at once.
+    # -n always starts a new process; if one is already running, the app's
+    # single-instance lock hands off to it and it shows its window.
+    env -u ELECTRON_RUN_AS_NODE open -n "$MAC_APP" --stdout "$LOG" --stderr "$LOG" --args "$APP_DIR"
+  else
+    nohup env -u ELECTRON_RUN_AS_NODE "$APP_DIR/node_modules/.bin/electron" "$APP_DIR" >>"$LOG" 2>&1 &
+    disown
+  fi
+}
+
+stop() {
+  if is_running; then
+    pkill -f "$MATCH" || true
+    for _ in 1 2 3 4 5 6 7 8 9 10; do is_running || break; sleep 0.3; done
+    is_running && pkill -9 -f "$MATCH" || true
+    echo "Stopped."
+  else
+    echo "Not running."
+  fi
+}
+
+case "${1:-start}" in
+  start)
+    if is_running; then
+      start
+      echo "Already running. Brought the window back."
+    else
+      start
+      echo "Started. Show or hide it with Control+Option+H."
+    fi
+    ;;
+  stop) stop ;;
+  restart) stop; start; echo "Restarted." ;;
+  status) is_running && echo "Running." || echo "Not running." ;;
+  logs) mkdir -p "$LOG_DIR"; touch "$LOG"; exec tail -n 50 -f "$LOG" ;;
+  -h|--help|help) awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$src" ;;
+  *) echo "Unknown command: $1 (try: cluely help)" >&2; exit 2 ;;
+esac
