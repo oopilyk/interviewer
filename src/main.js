@@ -10,6 +10,7 @@ const {
   shell,
 } = require("electron");
 const path = require("node:path");
+const fs = require("node:fs");
 require("./env").loadEnv();
 
 if (!app) {
@@ -30,6 +31,20 @@ const MOVE_STEP = 40;
 let win = null;
 let clickThrough = false;
 const session = new ChatSession();
+
+// Lifecycle log, appended across runs (the launcher's stdout log is truncated on
+// every start, which loses the reason the previous run ended).
+const LIFECYCLE_LOG = path.join(app.getPath("home"), "Library", "Logs", "cluelydupe", "lifecycle.log");
+function lifecycle(msg) {
+  try {
+    fs.mkdirSync(path.dirname(LIFECYCLE_LOG), { recursive: true });
+    fs.appendFileSync(LIFECYCLE_LOG, `${new Date().toISOString()} pid=${process.pid} ${msg}\n`);
+  } catch {}
+}
+function quitFrom(source) {
+  lifecycle(`quit requested: ${source}`);
+  app.quit();
+}
 
 // Hide from the Dock so the app doesn't announce itself; keep a tray-less footprint.
 if (process.platform === "darwin" && !isDev) app.dock?.hide();
@@ -121,6 +136,17 @@ function createWindow() {
   win.on("moved", persistBounds);
   win.on("resized", persistBounds);
   win.on("closed", () => (win = null));
+
+  // A global shortcut does not swallow the key while this window itself is key:
+  // the keystroke reaches the chat input and Option turns it into a character
+  // (⌃⌥H types "˙"). Catch hotkeys here, before the page sees them.
+  win.webContents.on("before-input-event", (event, input) => {
+    if (input.type !== "keyDown") return;
+    const hotkey = matchHotkey(input);
+    if (!hotkey) return;
+    event.preventDefault();
+    hotkey.run();
+  });
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
@@ -246,7 +272,9 @@ async function handleAsk({ text, withScreenshot, solve }) {
     const reply = await session.send({ text: prompt, image }, (delta) => send("chat:delta", delta));
     send("chat:done", { reply });
   } catch (err) {
-    send("chat:error", { message: describeError(err) });
+    const message = describeError(err);
+    lifecycle(`request failed: ${message} | ${err?.name}: ${err?.message}${err?.cause ? ` | cause: ${err.cause.code || err.cause.message}` : ""}`);
+    send("chat:error", { message });
   } finally {
     busy = false;
   }
@@ -279,7 +307,7 @@ ipcMain.handle("settings:set", (_e, patch) => {
 ipcMain.handle("settings:default-prompt", () => store.DEFAULTS.systemPrompt);
 
 ipcMain.handle("window:hide", () => win?.hide());
-ipcMain.handle("window:quit", () => app.quit());
+ipcMain.handle("window:quit", () => quitFrom("Quit app button"));
 ipcMain.handle("window:click-through", (_e, on) => setClickThrough(Boolean(on)));
 ipcMain.handle("window:open-external", (_e, url) => shell.openExternal(url));
 
@@ -321,8 +349,15 @@ const HOTKEYS = [
   { id: "move-down", key: "Down", glyph: "↓", action: "Move down", run: () => nudge(0, MOVE_STEP) },
   { id: "move-left", key: "Left", glyph: "←", action: "Move left", run: () => nudge(-MOVE_STEP, 0) },
   { id: "move-right", key: "Right", glyph: "→", action: "Move right", run: () => nudge(MOVE_STEP, 0) },
-  { id: "quit", key: "Q", glyph: "Q", action: "Quit", run: () => app.quit() },
+  { id: "quit", key: "Q", glyph: "Q", action: "Quit", run: () => quitFrom("Control+Option+Q hotkey") },
 ];
+
+// Matches by physical key (input.code), since input.key is already the
+// Option-modified character.
+function matchHotkey(input) {
+  if (!input.control || !input.alt || input.meta || input.shift !== !IS_MAC) return null;
+  return HOTKEYS.find((h) => input.code === (h.key.length === 1 ? `Key${h.key}` : `Arrow${h.key}`));
+}
 
 // What actually got registered. A key another app already owns silently falls
 // through to the frontmost app, so the UI shows failures instead of hiding them.
@@ -355,6 +390,13 @@ if (!gotLock) {
   app.on("second-instance", () => {
     if (win) showOverlay({ key: true });
   });
+
+  lifecycle("started");
+  app.on("render-process-gone", (_e, _wc, d) => lifecycle(`renderer gone: ${d.reason} (exit ${d.exitCode})`));
+  app.on("child-process-gone", (_e, d) => lifecycle(`child process gone: ${d.type} ${d.reason} (exit ${d.exitCode})`));
+  process.on("uncaughtException", (err) => lifecycle(`uncaught exception: ${err?.stack || err}`));
+  process.on("SIGTERM", () => quitFrom("SIGTERM (cluely stop/restart or system)"));
+  app.on("quit", (_e, code) => lifecycle(`exited with code ${code}`));
 
   app.whenReady().then(() => {
     registerHotkeys();
