@@ -11,6 +11,8 @@ Electron's `BrowserWindow.setContentProtection(true)` maps to:
 
 The overlay is also frameless, transparent, hidden from the Dock and Mission Control, floats above fullscreen apps on every Space, and can be made click-through so it never interferes with what you are doing.
 
+It stays out of the pointer, too. The mouse passes straight through to the app behind except over the overlay's own bar, buttons and composer, so the app behind goes on drawing the cursor it would draw if the overlay were not there; on macOS a native helper additionally stops this process from touching the cursor at all while the pointer is inside the window (`native/prevent-activation.m`). Clicks and scrolling outside those controls land on whatever is behind.
+
 The app's own screenshot feature uses Electron's `desktopCapturer`, which honors the same protection, so the overlay never shows up in the image sent to the model.
 
 ## Setup

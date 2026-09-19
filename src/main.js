@@ -20,7 +20,7 @@ if (!app) {
 }
 const store = require("./store");
 const { ChatSession, describeError } = require("./claude");
-const { buildSolvePrompt } = require("./prompts");
+const { buildSolvePrompt, countSolveTurns } = require("./prompts");
 const macNonactivating = require("./mac-nonactivating");
 
 const isDev = process.argv.includes("--dev");
@@ -29,7 +29,12 @@ const WIN_H = 520;
 const MOVE_STEP = 40;
 
 let win = null;
+// ⌃⌥C: pass everything through, including the overlay's own controls.
 let clickThrough = false;
+// Set by the renderer: the pointer is over one of the overlay's own controls.
+let pointerOnControl = false;
+// The window's bounds when a drag of the bar started; null when not dragging.
+let dragOrigin = null;
 const session = new ChatSession();
 
 // Lifecycle log, appended across runs (the launcher's stdout log is truncated on
@@ -118,6 +123,8 @@ function createWindow() {
   }
 
   macNonactivating.apply(win);
+  macNonactivating.freezeCursor(win);
+  applyMousePassthrough();
   win.on("show", () => macNonactivating.apply(win));
 
   win.loadFile(path.join(__dirname, "..", "renderer", "index.html"));
@@ -130,9 +137,6 @@ function createWindow() {
     win.showInactive();
   });
 
-  const persistBounds = () => {
-    if (win && !win.isDestroyed()) store.save({ windowBounds: win.getBounds() });
-  };
   win.on("moved", persistBounds);
   win.on("resized", persistBounds);
   win.on("closed", () => (win = null));
@@ -154,6 +158,13 @@ function createWindow() {
   });
 
   if (isDev) win.webContents.openDevTools({ mode: "detach" });
+}
+
+// Writing the settings file is synchronous, so a drag -- which moves the window
+// on every mouse move -- saves once at the end instead of on every frame.
+function persistBounds() {
+  if (dragOrigin) return;
+  if (win && !win.isDestroyed()) store.save({ windowBounds: win.getBounds() });
 }
 
 function send(channel, payload) {
@@ -190,11 +201,23 @@ function nudge(dx, dy) {
   win.setBounds({ ...b, x: b.x + dx, y: b.y + dy });
 }
 
+// Whoever receives the mouse owns the cursor, and a cursor that does not match
+// what is under it gives the invisible overlay away (see the frozen cursor in
+// native/prevent-activation.m). So the overlay hands the mouse to the app
+// underneath everywhere it can, and only takes it while the pointer is over one
+// of its own controls -- the app below then keeps drawing the right cursor for
+// whatever the overlay is covering.
+function applyMousePassthrough() {
+  if (!win || win.isDestroyed()) return;
+  const pass = clickThrough || !pointerOnControl;
+  // forward:true keeps mousemove flowing to the page while clicks pass through,
+  // which is how the renderer notices the pointer reaching a control at all.
+  win.setIgnoreMouseEvents(pass, { forward: true });
+}
+
 function setClickThrough(on) {
   clickThrough = on;
-  if (!win) return;
-  // forward:true keeps hover events flowing so the UI can still react visually.
-  win.setIgnoreMouseEvents(on, { forward: true });
+  applyMousePassthrough();
   send("ui:click-through", on);
 }
 
@@ -252,6 +275,11 @@ async function captureScreen() {
 // --- IPC ----------------------------------------------------------------------
 let busy = false;
 
+function solveLabel(note, attempt) {
+  const head = attempt > 0 ? `Solve again — another approach (#${attempt + 1})` : "Solve the question on screen";
+  return note ? `${head}: ${note}` : head;
+}
+
 async function handleAsk({ text, withScreenshot, solve }) {
   if (busy) {
     session.abort();
@@ -259,8 +287,10 @@ async function handleAsk({ text, withScreenshot, solve }) {
   busy = true;
   // Solve always reads the screen. The chat shows a short label, not the full instructions.
   if (solve) withScreenshot = true;
-  const label = solve ? (text?.trim() ? `Solve: ${text.trim()}` : "Solve the question on screen") : text;
-  const prompt = solve ? buildSolvePrompt(text) : text;
+  // Solving the same conversation again means "another way", not the same answer.
+  const attempt = solve ? countSolveTurns(session.messages) : 0;
+  const label = solve ? solveLabel(text?.trim(), attempt) : text;
+  const prompt = solve ? buildSolvePrompt(text, attempt) : text;
   send("chat:start", { text: label, withScreenshot, solve: Boolean(solve) });
   try {
     let image;
@@ -309,6 +339,29 @@ ipcMain.handle("settings:default-prompt", () => store.DEFAULTS.systemPrompt);
 ipcMain.handle("window:hide", () => win?.hide());
 ipcMain.handle("window:quit", () => quitFrom("Quit app button"));
 ipcMain.handle("window:click-through", (_e, on) => setClickThrough(Boolean(on)));
+// Fire-and-forget: this arrives on every crossing in or out of a control, and a
+// round trip would let a click land before the window has taken the mouse back.
+ipcMain.on("window:pointer-on-control", (_e, on) => {
+  pointerOnControl = Boolean(on);
+  applyMousePassthrough();
+});
+
+// Dragging the window by its bar. -webkit-app-region: drag cannot do this job
+// here: while the window is ignoring the mouse AppKit never sees the press, and
+// a drag region swallows the moves the renderer needs to decide when to take the
+// mouse back. So the renderer reports how far the pointer has travelled since
+// the press and the window follows, measured from the bounds it started at.
+ipcMain.on("window:drag-start", () => {
+  dragOrigin = win && !win.isDestroyed() ? win.getBounds() : null;
+});
+ipcMain.on("window:drag-move", (_e, { dx, dy }) => {
+  if (!dragOrigin || !win || win.isDestroyed()) return;
+  win.setBounds({ ...dragOrigin, x: dragOrigin.x + Math.round(dx), y: dragOrigin.y + Math.round(dy) });
+});
+ipcMain.on("window:drag-end", () => {
+  dragOrigin = null;
+  persistBounds();
+});
 ipcMain.handle("window:open-external", (_e, url) => shell.openExternal(url));
 
 // --- Global hotkeys (work even when another app has focus) --------------------

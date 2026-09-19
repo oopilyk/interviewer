@@ -328,3 +328,86 @@ overlay.getHotkeys().then((list) => {
     );
   }
 });
+
+// --- Mouse pass-through --------------------------------------------------------
+// The window ignores the mouse everywhere except over its own controls, so the
+// app underneath keeps receiving the moves that decide which cursor is drawn --
+// an overlay that is invisible to screen share must not be visible in the
+// pointer either. Chromium still delivers mousemove while the window is
+// ignoring the mouse (setIgnoreMouseEvents forward:true), which is what lets
+// this notice the pointer arriving on a control and hand the mouse back in time
+// for the click. Anything not listed here (the transcript, the panel's own
+// background) passes clicks and scrolling through to whatever is behind.
+// #bar is the whole title strip: the window is dragged from it (further down),
+// so the mouse has to reach it for dragging to work at all.
+const CONTROLS = "#bar, #composer, #settings, button, input, select, textarea, label, a[href]";
+let pointerOnControl = false;
+
+function setPointerOnControl(on) {
+  if (on === pointerOnControl) return;
+  pointerOnControl = on;
+  overlay.setPointerOnControl(on);
+}
+
+document.addEventListener(
+  "mousemove",
+  (e) => {
+    // A drag that outruns the window would otherwise land the pointer outside
+    // the bar, hand the mouse back to the app behind and drop the drag.
+    if (dragging) return;
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    setPointerOnControl(Boolean(el && el.closest(CONTROLS)));
+  },
+  true
+);
+
+// Leaving the window over a control would otherwise leave the mouse captured.
+// While a control holds it the window gets real events, so these do arrive. A
+// drag is exempt: it can pull the pointer clean out of the window and still has
+// to keep receiving moves.
+function releaseOnLeave() {
+  if (!dragging) setPointerOnControl(false);
+}
+document.addEventListener("mouseleave", releaseOnLeave, true);
+document.addEventListener("mouseout", (e) => {
+  if (!e.relatedTarget) releaseOnLeave();
+}, true);
+
+// --- Dragging the window -------------------------------------------------------
+// Done by hand rather than with -webkit-app-region: drag, which cannot work
+// while the window is ignoring the mouse (see above): AppKit never sees the
+// press, and a drag region would swallow the moves that decide when to take the
+// mouse back. The bar is an ordinary element, and the window follows how far the
+// pointer has travelled on screen since the press.
+const DRAG_FROM = "#bar, #settings h2";
+let dragging = null;
+
+document.addEventListener("mousedown", (e) => {
+  if (e.button !== 0) return;
+  const from = e.target.closest(DRAG_FROM);
+  // The buttons live in the bar; a press on one is a click, not a drag.
+  if (!from || e.target.closest("button, input, select, textarea, label, a[href]")) return;
+  dragging = { x: e.screenX, y: e.screenY };
+  overlay.dragStart();
+  e.preventDefault();
+});
+
+document.addEventListener("mousemove", (e) => {
+  if (!dragging) return;
+  // The window follows the mouse, so a lost mouseup would leave it stuck to the
+  // pointer; no button still down means the press ended somewhere unseen.
+  if (e.buttons === 0) endDrag(e);
+  else overlay.dragMove(e.screenX - dragging.x, e.screenY - dragging.y);
+});
+
+function endDrag(e) {
+  if (!dragging) return;
+  dragging = null;
+  overlay.dragEnd();
+  // The pointer may have ended up off the bar, or off the window entirely, and
+  // no move is guaranteed to follow: settle the mouse from where it actually is,
+  // or the next click could land on the app behind instead of on a button.
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+  setPointerOnControl(Boolean(el && el.closest(CONTROLS)));
+}
+document.addEventListener("mouseup", endDrag);

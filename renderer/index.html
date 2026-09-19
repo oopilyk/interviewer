@@ -14,8 +14,8 @@
         <span class="grip">⣿</span>
         <span id="status-text">Ready</span>
       </div>
-      <div class="bar-actions no-drag">
-        <button id="btn-solve" class="solve" title="Solve the question on screen">⚡ Solve</button>
+      <div class="bar-actions">
+        <button id="btn-solve" class="solve" title="Solve the question on screen (press again for a different approach)">⚡ Solve</button>
         <button id="btn-shot" title="Screenshot + ask">📷</button>
         <button id="btn-reset" title="New conversation">↺</button>
         <button id="btn-settings" title="Settings">⚙</button>
@@ -27,11 +27,12 @@
       <div class="hint">
         <p><b>Hidden from screen share.</b> This window is excluded from screen recording, screen sharing and screenshots by the OS.</p>
         <p>Type a question and press <kbd>Enter</kbd>. Press <kbd data-hk="shot"></kbd> to send a screenshot of your screen with your question.</p>
+        <p><b>The mouse passes through.</b> So the cursor keeps the shape the app behind gives it and never gives this window away. The bar, the buttons and the composer still take clicks; clicks and scrolling anywhere else land on whatever is behind.</p>
         <p class="keys" id="hotkey-list"></p>
       </div>
     </main>
 
-    <footer id="composer" class="no-drag">
+    <footer id="composer">
       <textarea id="input" rows="1" placeholder="Ask anything… (Enter to send, Shift+Enter newline)"></textarea>
       <label class="shot-toggle" title="Attach a screenshot of your screen">
         <input type="checkbox" id="attach-shot" /> 📷
@@ -39,7 +40,7 @@
       <button id="btn-send" title="Send">➤</button>
     </footer>
 
-    <section id="settings" class="no-drag" hidden>
+    <section id="settings" hidden>
       <h2>Settings <span class="fine">(drag here to move)</span></h2>
       <label>Anthropic API key
         <input id="s-key" type="password" placeholder="sk-ant-…" autocomplete="off" />

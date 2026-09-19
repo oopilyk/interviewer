@@ -18,6 +18,10 @@ contextBridge.exposeInMainWorld("overlay", {
   hide: () => ipcRenderer.invoke("window:hide"),
   quit: () => ipcRenderer.invoke("window:quit"),
   setClickThrough: (on) => ipcRenderer.invoke("window:click-through", on),
+  setPointerOnControl: (on) => ipcRenderer.send("window:pointer-on-control", on),
+  dragStart: () => ipcRenderer.send("window:drag-start"),
+  dragMove: (dx, dy) => ipcRenderer.send("window:drag-move", { dx, dy }),
+  dragEnd: () => ipcRenderer.send("window:drag-end"),
   openExternal: (url) => ipcRenderer.invoke("window:open-external", url),
 
   onStart: listen("chat:start"),

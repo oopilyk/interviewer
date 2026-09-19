@@ -94,4 +94,19 @@ function makeKey(win) {
   }
 }
 
-module.exports = { apply, makeKey };
+// Keep the pointer looking exactly as it did over the app underneath: no arrow,
+// no finger, no I-beam handed out by the overlay. See native/prevent-activation.m.
+function freezeCursor(win) {
+  if (process.platform !== "darwin" || !win || win.isDestroyed()) return false;
+  const native = load();
+  if (!native?.freezeCursor) return false;
+  try {
+    native.freezeCursor(win.getNativeWindowHandle());
+    return true;
+  } catch (err) {
+    console.warn("Could not freeze the cursor over the overlay:", err.message);
+    return false;
+  }
+}
+
+module.exports = { apply, makeKey, freezeCursor };

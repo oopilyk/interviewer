@@ -36,12 +36,9 @@ body.click-through #app { border-color: var(--accent); opacity: 0.7; }
   justify-content: space-between;
   padding: 8px 10px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  -webkit-app-region: drag;
   user-select: none;
 }
-.no-drag, .no-drag * { -webkit-app-region: no-drag; }
-.drag-handle { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; flex: 1; cursor: grab; padding: 2px 0; }
-.drag-handle:active { cursor: grabbing; }
+.drag-handle { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; flex: 1; padding: 2px 0; }
 .grip { letter-spacing: -2px; opacity: 0.5; font-size: 14px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: #4cd964; }
 body.busy .dot { background: var(--accent); animation: pulse 1s infinite; }
@@ -55,7 +52,6 @@ button {
   border: 1px solid transparent;
   border-radius: 8px;
   padding: 4px 8px;
-  cursor: pointer;
   font: inherit;
   line-height: 1.2;
 }
@@ -130,7 +126,7 @@ kbd {
 #input:focus { border-color: var(--accent); }
 .shot-toggle {
   display: flex; align-items: center; gap: 4px;
-  background: var(--bg-2); border-radius: 8px; padding: 6px 8px; cursor: pointer; user-select: none;
+  background: var(--bg-2); border-radius: 8px; padding: 6px 8px; user-select: none;
 }
 .shot-toggle input { margin: 0; accent-color: var(--accent); }
 #btn-send { padding: 7px 12px; }
@@ -142,7 +138,7 @@ kbd {
   overflow-y: auto;
   display: flex; flex-direction: column; gap: 10px;
 }
-#settings h2 { margin: 0 0 4px; font-size: 15px; -webkit-app-region: drag; cursor: grab; }
+#settings h2 { margin: 0 0 4px; font-size: 15px; user-select: none; }
 #settings label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12px; }
 #settings input[type="password"], #settings select, #settings textarea {
   background: var(--bg-2); color: var(--fg); border: 1px solid rgba(255,255,255,0.1);
@@ -166,4 +162,12 @@ button.solve {
   margin-right: 4px;
 }
 button.solve:hover { filter: brightness(1.1); background: var(--accent); }
-button.solve:disabled { opacity: 0.45; cursor: default; filter: none; }
+button.solve:disabled { opacity: 0.45; filter: none; }
+
+/* Cursor. The overlay is invisible to screen share, so a finger pointer or a
+   grab hand appearing over empty desktop gives it away -- and over a text field
+   underneath, even swapping the I-beam for a plain arrow is a tell. The native
+   helper freezes the cursor outright while the pointer is inside the window
+   (native/prevent-activation.m); these rules are the fallback for when it could
+   not be loaded, so at least nothing in here asks for a cursor of its own. */
+*, *::before, *::after { cursor: default; }
