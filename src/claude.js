@@ -68,14 +68,22 @@ class ChatSession {
   }
 
   /**
-   * Send a user turn. `image` is optional {data: base64, mediaType}.
+   * Send a user turn. `image` is optional {data: base64, mediaType};
+   * `pdf` is optional {name, data: base64}.
    * `onDelta(text)` receives streamed text; resolves with the full reply.
    */
-  async send({ text, image }, onDelta) {
+  async send({ text, image, pdf }, onDelta) {
     const client = this.getClient();
     this.abort();
 
     const content = [];
+    if (pdf) {
+      content.push({
+        type: "document",
+        source: { type: "base64", media_type: "application/pdf", data: pdf.data },
+        title: pdf.name,
+      });
+    }
     if (image) {
       content.push({
         type: "image",
@@ -84,7 +92,12 @@ class ChatSession {
     }
     content.push({
       type: "text",
-      text: text && text.trim() ? text : "Look at my screen and help me with what is shown.",
+      text:
+        text && text.trim()
+          ? text
+          : image
+            ? "Look at my screen and help me with what is shown."
+            : "Read this PDF and give me the key points.",
     });
     const userTurn = { role: "user", content };
     this.messages.push(userTurn);
@@ -95,12 +108,15 @@ class ChatSession {
 
     const model = store.get("model");
     const effort = store.get("effort");
+    // Notes are facts about the user that carry into every conversation.
+    const system = [{ type: "text", text: store.get("systemPrompt") }];
+    const notes = (store.get("notes") || "").trim();
+    if (notes) system.push({ type: "text", text: `Notes about me, remembered across conversations:\n${notes}` });
+    system[system.length - 1].cache_control = { type: "ephemeral" };
     const params = {
       model,
       max_tokens: 8000,
-      system: [
-        { type: "text", text: store.get("systemPrompt"), cache_control: { type: "ephemeral" } },
-      ],
+      system,
       messages: this.messages,
       thinking: { type: "adaptive" },
       output_config: { effort },

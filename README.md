@@ -58,9 +58,11 @@ On macOS the command launches through LaunchServices. The overlay keeps running 
 | ⌃⌥S | Capture the screen and send it with whatever is typed |
 | Enter | Send the typed question (Shift+Enter for newline) |
 | Esc | Stop the current reply, or hide the overlay |
+| ⌃⌥Y | Copy the last reply to the clipboard |
 | ⌃⌥N | Start a new conversation |
 | ⌃⌥C | Toggle click-through mode |
 | ⌃⌥↑ ↓ ← → | Move the overlay |
+| ⌃⌥U / ⌃⌥D | Scroll the conversation up / down |
 | ⌃⌥Q | Quit |
 
 ⌃⌥ is Control+Option. On Windows and Linux use Ctrl+Alt+Shift instead, because Ctrl+Alt acts as AltGr on many keyboard layouts.

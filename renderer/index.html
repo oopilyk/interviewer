@@ -32,8 +32,12 @@
       </div>
     </main>
 
+    <div id="attachment" hidden>
+      <span id="attachment-name"></span>
+      <button id="attachment-remove" title="Remove PDF">✕</button>
+    </div>
     <footer id="composer">
-      <textarea id="input" rows="1" placeholder="Ask anything… (Enter to send, Shift+Enter newline)"></textarea>
+      <textarea id="input" rows="1" placeholder="Ask anything… (Enter to send, Shift+Enter newline, ⌘V to paste a PDF copied in Finder)"></textarea>
       <label class="shot-toggle" title="Attach a screenshot of your screen">
         <input type="checkbox" id="attach-shot" /> 📷
       </label>
@@ -67,6 +71,9 @@
         <textarea id="s-system" rows="5"></textarea>
       </label>
       <button id="s-reset-prompt">Restore default system prompt</button>
+      <label>Notes <span class="fine">(things to remember about you in every conversation)</span>
+        <textarea id="s-notes" rows="4" placeholder="e.g. I'm interviewing for backend roles. I code in Python and Go."></textarea>
+      </label>
       <p id="s-error" class="error-line"></p>
       <div class="row">
         <button id="s-save" class="primary">Save (⌘⏎)</button>

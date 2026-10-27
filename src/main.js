@@ -8,6 +8,7 @@ const {
   nativeImage,
   systemPreferences,
   shell,
+  clipboard,
 } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
@@ -280,7 +281,9 @@ function solveLabel(note, attempt) {
   return note ? `${head}: ${note}` : head;
 }
 
-async function handleAsk({ text, withScreenshot, solve }) {
+let lastReply = ""; // what the copy hotkey puts on the clipboard
+
+async function handleAsk({ text, withScreenshot, solve, pdf }) {
   if (busy) {
     session.abort();
   }
@@ -291,7 +294,7 @@ async function handleAsk({ text, withScreenshot, solve }) {
   const attempt = solve ? countSolveTurns(session.messages) : 0;
   const label = solve ? solveLabel(text?.trim(), attempt) : text;
   const prompt = solve ? buildSolvePrompt(text, attempt) : text;
-  send("chat:start", { text: label, withScreenshot, solve: Boolean(solve) });
+  send("chat:start", { text: label, withScreenshot, solve: Boolean(solve), pdfName: pdf?.name });
   try {
     let image;
     if (withScreenshot) {
@@ -299,7 +302,8 @@ async function handleAsk({ text, withScreenshot, solve }) {
       image = { data: shot.data, mediaType: shot.mediaType };
       send("chat:screenshot", { preview: shot.preview });
     }
-    const reply = await session.send({ text: prompt, image }, (delta) => send("chat:delta", delta));
+    const reply = await session.send({ text: prompt, image, pdf }, (delta) => send("chat:delta", delta));
+    if (reply) lastReply = reply;
     send("chat:done", { reply });
   } catch (err) {
     const message = describeError(err);
@@ -314,6 +318,7 @@ ipcMain.handle("chat:ask", (_e, payload) => handleAsk(payload));
 ipcMain.handle("chat:stop", () => session.abort());
 ipcMain.handle("chat:reset", () => {
   session.reset();
+  lastReply = "";
   return true;
 });
 
@@ -323,7 +328,7 @@ ipcMain.handle("settings:get", () => {
 });
 ipcMain.handle("settings:set", (_e, patch) => {
   const clean = {};
-  for (const k of ["model", "effort", "systemPrompt", "opacity"]) {
+  for (const k of ["model", "effort", "systemPrompt", "notes", "opacity"]) {
     if (patch[k] !== undefined) clean[k] = patch[k];
   }
   if (typeof patch.apiKey === "string" && patch.apiKey && !patch.apiKey.startsWith("•")) {
@@ -394,10 +399,24 @@ const HOTKEYS = [
     action: "New conversation",
     run: () => {
       session.reset();
+      lastReply = "";
       send("chat:reset", {});
     },
   },
   { id: "clickthrough", key: "C", glyph: "C", action: "Click-through", run: () => setClickThrough(!clickThrough) },
+  {
+    id: "copy",
+    key: "Y",
+    glyph: "Y",
+    action: "Copy last reply",
+    run: () => {
+      if (lastReply) clipboard.writeText(lastReply);
+      send("ui:copied", Boolean(lastReply));
+    },
+  },
+  // The transcript passes the mouse through to the app behind, so scrolling needs keys.
+  { id: "scroll-up", key: "U", glyph: "U", action: "Scroll up", run: () => send("ui:scroll", -1) },
+  { id: "scroll-down", key: "D", glyph: "D", action: "Scroll down", run: () => send("ui:scroll", 1) },
   { id: "move-up", key: "Up", glyph: "↑", action: "Move up", run: () => nudge(0, -MOVE_STEP) },
   { id: "move-down", key: "Down", glyph: "↓", action: "Move down", run: () => nudge(0, MOVE_STEP) },
   { id: "move-left", key: "Left", glyph: "←", action: "Move left", run: () => nudge(-MOVE_STEP, 0) },

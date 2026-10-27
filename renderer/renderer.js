@@ -10,6 +10,7 @@ let currentAssistant = null;
 let currentRaw = "";
 let currentUserBubble = null;
 let busy = false;
+let pendingPdf = null; // {name, data} attached to the next message
 
 // --- Minimal, safe markdown -> HTML --------------------------------------------
 function escapeHtml(s) {
@@ -72,10 +73,16 @@ function clearHint() {
 function scrollToBottom() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
-function addUser(text, withScreenshot) {
+function addUser(text, withScreenshot, pdfName) {
   clearHint();
   const el = document.createElement("div");
   el.className = "msg user";
+  if (pdfName) {
+    const tag = document.createElement("div");
+    tag.className = "pdf-tag";
+    tag.textContent = "📄 " + pdfName;
+    el.appendChild(tag);
+  }
   if (withScreenshot) {
     const img = document.createElement("img");
     img.alt = "screenshot";
@@ -83,7 +90,7 @@ function addUser(text, withScreenshot) {
     el.appendChild(img);
   }
   const t = document.createElement("div");
-  t.textContent = text || (withScreenshot ? "(screenshot)" : "");
+  t.textContent = text || (withScreenshot ? "(screenshot)" : pdfName ? "(PDF)" : "");
   el.appendChild(t);
   messagesEl.appendChild(el);
   currentUserBubble = el;
@@ -120,15 +127,64 @@ function setStatus(text, cls) {
   if (cls) document.body.classList.add(cls);
 }
 
+// --- PDF attachment ------------------------------------------------------------
+// The API takes requests up to 32 MB, and base64 grows a file by a third.
+const MAX_PDF_BYTES = 20 * 1024 * 1024;
+
+function readAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1]);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function attachPdf(file) {
+  if (file.type !== "application/pdf" && !/\.pdf$/i.test(file.name)) {
+    setStatus("Only PDF files can be attached", "error");
+    return;
+  }
+  if (file.size > MAX_PDF_BYTES) {
+    setStatus(`PDF too large (max ${MAX_PDF_BYTES / 1024 / 1024} MB)`, "error");
+    return;
+  }
+  pendingPdf = { name: file.name, data: await readAsBase64(file) };
+  $("#attachment-name").textContent = "📄 " + file.name;
+  $("#attachment").hidden = false;
+  setStatus("PDF attached");
+  inputEl.focus();
+}
+
+function takePdf() {
+  const pdf = pendingPdf;
+  pendingPdf = null;
+  $("#attachment").hidden = true;
+  return pdf;
+}
+
+$("#attachment-remove").addEventListener("click", () => {
+  takePdf();
+  setStatus("Ready");
+});
+// A PDF copied in Finder (Cmd+C) pastes as a file.
+inputEl.addEventListener("paste", (e) => {
+  const file = [...(e.clipboardData?.files || [])].find((f) => /\.pdf$/i.test(f.name) || f.type === "application/pdf");
+  if (file) {
+    e.preventDefault();
+    attachPdf(file);
+  }
+});
+
 // --- Sending -------------------------------------------------------------------
 async function send(withScreenshotOverride) {
   const text = inputEl.value.trim();
   const withScreenshot = withScreenshotOverride ?? attachShotEl.checked;
-  if (!text && !withScreenshot) return;
+  if (!text && !withScreenshot && !pendingPdf) return;
   inputEl.value = "";
   autosize();
   attachShotEl.checked = false;
-  await overlay.ask(text, withScreenshot);
+  await overlay.ask(text, withScreenshot, takePdf());
 }
 
 function autosize() {
@@ -155,7 +211,7 @@ $("#btn-solve").addEventListener("click", () => {
   inputEl.value = "";
   autosize();
   attachShotEl.checked = false;
-  overlay.solve(extra);
+  overlay.solve(extra, takePdf());
 });
 $("#btn-reset").addEventListener("click", () => overlay.reset().then(resetView));
 $("#btn-hide").addEventListener("click", () => overlay.hide());
@@ -171,10 +227,10 @@ function resetView() {
 }
 
 // --- Events from main ----------------------------------------------------------
-overlay.onStart(({ text, withScreenshot }) => {
+overlay.onStart(({ text, withScreenshot, pdfName }) => {
   busy = true;
   finishAssistant();
-  addUser(text, withScreenshot);
+  addUser(text, withScreenshot, pdfName);
   setStatus(withScreenshot ? "Capturing screen…" : "Thinking…", "busy");
   $("#btn-send").textContent = "■";
   $("#btn-solve").disabled = true;
@@ -212,6 +268,10 @@ overlay.onScreenshotAsk(() => {
   // Sends whatever is typed along with a screenshot; empty text is fine.
   send(true);
 });
+overlay.onScroll((dir) => {
+  messagesEl.scrollBy({ top: dir * messagesEl.clientHeight * 0.8, behavior: "smooth" });
+});
+overlay.onCopied((ok) => setStatus(ok ? "Copied last reply" : "Nothing to copy yet"));
 overlay.onClickThrough((on) => {
   document.body.classList.toggle("click-through", on);
   setStatus(on ? `Click-through (${hotkeyKeys("clickthrough")} to disable)` : "Ready");
@@ -227,6 +287,7 @@ async function openSettings() {
   $("#s-opacity").value = s.opacity;
   $("#s-opacity-val").textContent = Math.round(s.opacity * 100) + "%";
   $("#s-system").value = s.systemPrompt;
+  $("#s-notes").value = s.notes;
   $("#s-error").textContent = "";
   settingsEl.hidden = false;
   $("#s-key").focus();
@@ -249,6 +310,7 @@ async function saveSettings() {
       effort: $("#s-effort").value,
       opacity: Number($("#s-opacity").value),
       systemPrompt: $("#s-system").value,
+      notes: $("#s-notes").value,
     });
     settingsEl.hidden = true;
     setStatus("Settings saved");
@@ -310,6 +372,8 @@ overlay.getHotkeys().then((list) => {
       [hotkeyKeys("toggle"), "show/hide"],
       [hotkeyKeys("clickthrough"), "click-through"],
       [up ? up.slice(0, -1) + "↑↓←→" : "", "move"],
+      [hotkeyKeys("scroll-up") ? hotkeyKeys("scroll-up").slice(0, -1) + "U/D" : "", "scroll"],
+      [hotkeyKeys("copy"), "copy reply"],
       [hotkeyKeys("reset"), "new chat"],
       [hotkeyKeys("quit"), "quit"],
     ];

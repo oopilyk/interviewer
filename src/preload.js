@@ -7,8 +7,8 @@ const listen = (channel) => (cb) => {
 };
 
 contextBridge.exposeInMainWorld("overlay", {
-  ask: (text, withScreenshot) => ipcRenderer.invoke("chat:ask", { text, withScreenshot }),
-  solve: (text) => ipcRenderer.invoke("chat:ask", { text, solve: true }),
+  ask: (text, withScreenshot, pdf) => ipcRenderer.invoke("chat:ask", { text, withScreenshot, pdf }),
+  solve: (text, pdf) => ipcRenderer.invoke("chat:ask", { text, solve: true, pdf }),
   stop: () => ipcRenderer.invoke("chat:stop"),
   reset: () => ipcRenderer.invoke("chat:reset"),
   getSettings: () => ipcRenderer.invoke("settings:get"),
@@ -33,5 +33,7 @@ contextBridge.exposeInMainWorld("overlay", {
   onFocusInput: listen("ui:focus-input"),
   onScreenshotAsk: listen("ui:screenshot-ask"),
   onClickThrough: listen("ui:click-through"),
+  onScroll: listen("ui:scroll"),
+  onCopied: listen("ui:copied"),
   platform: process.platform,
 });

@@ -13,6 +13,7 @@ const DEFAULTS = {
     "Answer directly and concisely. Lead with the answer, then at most a few supporting points. " +
     "When given a screenshot, read it carefully and respond to what is actually on screen. " +
     "Use plain text or light markdown. No preamble, no restating the question.",
+  notes: "",
   opacity: 0.96,
   windowBounds: null,
 };
