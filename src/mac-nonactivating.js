@@ -45,6 +45,8 @@ function build() {
       process.arch,
       "-framework",
       "AppKit",
+      "-framework",
+      "ApplicationServices",
       "-o",
       out,
       src,
@@ -109,4 +111,21 @@ function freezeCursor(win) {
   }
 }
 
-module.exports = { apply, makeKey, freezeCursor };
+// Paste the clipboard into the app behind the overlay. Resolves to "ok",
+// "no-permission" (Accessibility not granted yet) or "unsupported".
+async function pasteBehind() {
+  if (process.platform !== "darwin") return "unsupported";
+  const native = load();
+  if (!native?.postPaste) return "unsupported";
+  try {
+    native.yieldKey();
+    // Give the window server a moment to move keyboard focus.
+    await new Promise((r) => setTimeout(r, 80));
+    return native.postPaste() ? "ok" : "no-permission";
+  } catch (err) {
+    console.warn("Could not paste into the app behind:", err.message);
+    return "unsupported";
+  }
+}
+
+module.exports = { apply, makeKey, freezeCursor, pasteBehind };

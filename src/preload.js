@@ -35,5 +35,6 @@ contextBridge.exposeInMainWorld("overlay", {
   onClickThrough: listen("ui:click-through"),
   onScroll: listen("ui:scroll"),
   onCopied: listen("ui:copied"),
+  onPasted: listen("ui:pasted"),
   platform: process.platform,
 });

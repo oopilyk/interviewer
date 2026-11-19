@@ -10,6 +10,8 @@
 // the main window (it can still be key, so typing in the chat works).
 
 #import <AppKit/AppKit.h>
+#import <ApplicationServices/ApplicationServices.h>
+#include <unistd.h>
 #import <objc/message.h>
 #import <objc/runtime.h>
 #include <stddef.h>
@@ -26,6 +28,7 @@ extern napi_status napi_get_buffer_info(napi_env env, napi_value value, void **d
 extern napi_status napi_create_function(napi_env env, const char *utf8name, size_t length, napi_callback cb, void *data, napi_value *result);
 extern napi_status napi_set_named_property(napi_env env, napi_value object, const char *utf8name, napi_value value);
 extern napi_status napi_get_undefined(napi_env env, napi_value *result);
+extern napi_status napi_get_boolean(napi_env env, bool value, napi_value *result);
 extern napi_status napi_throw_error(napi_env env, const char *code, const char *msg);
 
 #define NAPI_AUTO_LENGTH ((size_t)-1)
@@ -245,6 +248,66 @@ static napi_value FreezeCursor(napi_env env, napi_callback_info info) {
   return undef;
 }
 
+// --- Paste into the app behind ------------------------------------------------
+// The overlay never activates, so the app underneath stays frontmost. If the
+// overlay holds key focus (the user was typing in it), hand keyboard focus back
+// to that app so the synthetic Cmd+V lands there and not in the chat box.
+static napi_value YieldKey(napi_env env, napi_callback_info info) {
+  (void)info;
+  @autoreleasepool {
+    NSRunningApplication *front = [NSWorkspace sharedWorkspace].frontmostApplication;
+    BOOL ownKey = NO;
+    for (NSWindow *window in NSApp.windows) {
+      if (window.isKeyWindow) {
+        ownKey = YES;
+        [window orderOut:nil];
+        [window orderFrontRegardless];
+      }
+    }
+    if (ownKey && front && front.processIdentifier != getpid()) {
+      [front activateWithOptions:NSApplicationActivateIgnoringOtherApps];
+    }
+  }
+  napi_value undef;
+  napi_get_undefined(env, &undef);
+  return undef;
+}
+
+// Post Cmd+V to whichever app has keyboard focus. Returns false when the app
+// lacks the Accessibility permission (macOS drops the events silently then).
+// The system prompt is shown at most once per launch: it reappears on every
+// call while the check fails, and a grant made while the app is running is
+// often not seen until it restarts.
+static BOOL gPromptedForAccessibility;
+
+static napi_value PostPaste(napi_env env, napi_callback_info info) {
+  (void)info;
+  bool ok = false;
+  @autoreleasepool {
+    NSDictionary *opts = @{(__bridge NSString *)kAXTrustedCheckOptionPrompt : @(!gPromptedForAccessibility)};
+    gPromptedForAccessibility = YES;
+    if (AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)opts)) {
+      // A private source, with the flags set explicitly, so the Control+Option
+      // still held from the hotkey does not turn this into Ctrl+Opt+Cmd+V.
+      CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStatePrivate);
+      const CGKeyCode kV = 9;  // kVK_ANSI_V
+      CGEventRef down = CGEventCreateKeyboardEvent(source, kV, true);
+      CGEventRef up = CGEventCreateKeyboardEvent(source, kV, false);
+      CGEventSetFlags(down, kCGEventFlagMaskCommand);
+      CGEventSetFlags(up, kCGEventFlagMaskCommand);
+      CGEventPost(kCGHIDEventTap, down);
+      CGEventPost(kCGHIDEventTap, up);
+      CFRelease(down);
+      CFRelease(up);
+      if (source) CFRelease(source);
+      ok = true;
+    }
+  }
+  napi_value result;
+  napi_get_boolean(env, ok, &result);
+  return result;
+}
+
 static napi_value Init(napi_env env, napi_value exports) {
   napi_value applyFn;
   napi_value makeKeyFn;
@@ -255,6 +318,12 @@ static napi_value Init(napi_env env, napi_value exports) {
   napi_value freezeCursorFn;
   napi_create_function(env, "freezeCursor", NAPI_AUTO_LENGTH, FreezeCursor, NULL, &freezeCursorFn);
   napi_set_named_property(env, exports, "freezeCursor", freezeCursorFn);
+  napi_value yieldKeyFn;
+  napi_create_function(env, "yieldKey", NAPI_AUTO_LENGTH, YieldKey, NULL, &yieldKeyFn);
+  napi_set_named_property(env, exports, "yieldKey", yieldKeyFn);
+  napi_value postPasteFn;
+  napi_create_function(env, "postPaste", NAPI_AUTO_LENGTH, PostPaste, NULL, &postPasteFn);
+  napi_set_named_property(env, exports, "postPaste", postPasteFn);
   return exports;
 }
 

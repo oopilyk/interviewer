@@ -389,8 +389,25 @@ function showThenScreenshotAsk() {
   send("ui:screenshot-ask");
 }
 
+// The last fenced code block if the reply has one (usually the answer), else
+// the whole reply.
+function pasteableText(reply) {
+  const blocks = [...reply.matchAll(/```[^\n]*\n([\s\S]*?)```/g)];
+  return blocks.length ? blocks[blocks.length - 1][1].replace(/\n$/, "") : reply;
+}
+
+async function pasteIntoAppBehind() {
+  if (!lastReply) {
+    send("ui:pasted", "empty");
+    return;
+  }
+  clipboard.writeText(pasteableText(lastReply));
+  send("ui:pasted", await macNonactivating.pasteBehind());
+}
+
 const HOTKEYS = [
   { id: "toggle", key: "H", glyph: "H", action: "Show / hide", run: toggleVisibility },
+  { id: "focus", key: "Space", glyph: "Space", action: "Type in the chat box", run: () => showOverlay({ key: true }) },
   { id: "shot", key: "S", glyph: "S", action: "Screenshot + ask", run: showThenScreenshotAsk },
   {
     id: "reset",
@@ -414,6 +431,7 @@ const HOTKEYS = [
       send("ui:copied", Boolean(lastReply));
     },
   },
+  { id: "paste", key: "P", glyph: "P", action: "Paste into app behind", run: pasteIntoAppBehind },
   // The transcript passes the mouse through to the app behind, so scrolling needs keys.
   { id: "scroll-up", key: "U", glyph: "U", action: "Scroll up", run: () => send("ui:scroll", -1) },
   { id: "scroll-down", key: "D", glyph: "D", action: "Scroll down", run: () => send("ui:scroll", 1) },
@@ -421,14 +439,18 @@ const HOTKEYS = [
   { id: "move-down", key: "Down", glyph: "↓", action: "Move down", run: () => nudge(0, MOVE_STEP) },
   { id: "move-left", key: "Left", glyph: "←", action: "Move left", run: () => nudge(-MOVE_STEP, 0) },
   { id: "move-right", key: "Right", glyph: "→", action: "Move right", run: () => nudge(MOVE_STEP, 0) },
-  { id: "quit", key: "Q", glyph: "Q", action: "Quit", run: () => quitFrom("Control+Option+Q hotkey") },
 ];
+
+function hotkeyCode(key) {
+  if (key.length === 1) return `Key${key}`;
+  return key === "Space" ? "Space" : `Arrow${key}`;
+}
 
 // Matches by physical key (input.code), since input.key is already the
 // Option-modified character.
 function matchHotkey(input) {
   if (!input.control || !input.alt || input.meta || input.shift !== !IS_MAC) return null;
-  return HOTKEYS.find((h) => input.code === (h.key.length === 1 ? `Key${h.key}` : `Arrow${h.key}`));
+  return HOTKEYS.find((h) => input.code === hotkeyCode(h.key));
 }
 
 // What actually got registered. A key another app already owns silently falls

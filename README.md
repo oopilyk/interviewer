@@ -55,19 +55,20 @@ On macOS the command launches through LaunchServices. The overlay keeps running 
 | Keys | Action |
 |---|---|
 | ⌃⌥H | Show / hide the overlay |
+| ⌃⌥Space | Bring up the overlay with the cursor in the chat box |
 | ⌃⌥S | Capture the screen and send it with whatever is typed |
 | Enter | Send the typed question (Shift+Enter for newline) |
 | Esc | Stop the current reply, or hide the overlay |
 | ⌃⌥Y | Copy the last reply to the clipboard |
+| ⌃⌥P | Paste into the app behind the overlay: the reply's last code block, or the whole reply if it has none |
 | ⌃⌥N | Start a new conversation |
 | ⌃⌥C | Toggle click-through mode |
 | ⌃⌥↑ ↓ ← → | Move the overlay |
 | ⌃⌥U / ⌃⌥D | Scroll the conversation up / down |
-| ⌃⌥Q | Quit |
 
 ⌃⌥ is Control+Option. On Windows and Linux use Ctrl+Alt+Shift instead, because Ctrl+Alt acts as AltGr on many keyboard layouts.
 
-These were chosen to avoid collisions. The obvious ⌘⇧ combinations are all taken: ⌘⇧S is Save As in most editors, ⌘⇧ with arrows selects text in every text field, ⌘⇧R and ⌘⇧C are Chrome's hard reload and inspect, and ⌘⇧Q logs you out. ⌃⌥Space is also skipped because macOS uses it to switch input source.
+These were chosen to avoid collisions. The obvious ⌘⇧ combinations are all taken: ⌘⇧S is Save As in most editors, ⌘⇧ with arrows selects text in every text field, ⌘⇧R and ⌘⇧C are Chrome's hard reload and inspect, and ⌘⇧Q logs you out. ⌃⌥Space is macOS's "select next input source" shortcut; it is used here for the chat box anyway, so if that macOS shortcut is on, the overlay reports ⌃⌥Space as unavailable.
 
 If another app already owns one of these shortcuts, the overlay shows a red notice listing it on launch, since an unregistered shortcut would otherwise pass through to the app in front.
 

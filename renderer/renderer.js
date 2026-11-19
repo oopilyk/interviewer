@@ -272,6 +272,13 @@ overlay.onScroll((dir) => {
   messagesEl.scrollBy({ top: dir * messagesEl.clientHeight * 0.8, behavior: "smooth" });
 });
 overlay.onCopied((ok) => setStatus(ok ? "Copied last reply" : "Nothing to copy yet"));
+const PASTE_STATUS = {
+  ok: "Pasted into the app behind",
+  empty: "Nothing to paste yet",
+  "no-permission": "Copied. Paste needs Accessibility for Electron; restart the overlay after granting it",
+  unsupported: "Copied. Paste with ⌘V / Ctrl+V",
+};
+overlay.onPasted((result) => setStatus(PASTE_STATUS[result] || PASTE_STATUS.unsupported));
 overlay.onClickThrough((on) => {
   document.body.classList.toggle("click-through", on);
   setStatus(on ? `Click-through (${hotkeyKeys("clickthrough")} to disable)` : "Ready");
@@ -375,7 +382,7 @@ overlay.getHotkeys().then((list) => {
       [hotkeyKeys("scroll-up") ? hotkeyKeys("scroll-up").slice(0, -1) + "U/D" : "", "scroll"],
       [hotkeyKeys("copy"), "copy reply"],
       [hotkeyKeys("reset"), "new chat"],
-      [hotkeyKeys("quit"), "quit"],
+      [hotkeyKeys("paste"), "paste"],
     ];
     entries.forEach(([keys, what], i) => {
       const kbd = document.createElement("kbd");
